@@ -1,0 +1,39 @@
+<!-- Overrides for the stock clickhouse-server config. Mounted read-only into
+     /etc/clickhouse-server/config.d/, merged over config.xml at start.
+     The image's own docker_related_config.xml already makes the server
+     listen on every interface INSIDE the container; the compose file
+     publishes the ports on the host's loopback only. -->
+<clickhouse>
+    <!-- Console logging, picked up by docker's json-file driver (rotated
+         by compose). Keep the file logger off so the data volume does not
+         fill with logs. -->
+    <logger>
+        <level>information</level>
+        <console>1</console>
+        <log remove="remove"/>
+        <errorlog remove="remove"/>
+    </logger>
+
+    <!-- Share the host with postgres: cap the server at a fraction of RAM
+         and keep one query from taking all of that. -->
+    <max_server_memory_usage_to_ram_ratio>0.6</max_server_memory_usage_to_ram_ratio>
+    <mark_cache_size>536870912</mark_cache_size>
+
+    <!-- Background pool sizes are left at their defaults: the server's
+         sanity check ties several merge-tree settings to them (a pool of 4
+         refused to start: number_of_free_entries_in_pool_to_execute_mutation
+         must fit inside it). CPU is capped by compose instead. -->
+
+    <!-- The system.* log tables grow without bound by default. -->
+    <query_log>
+        <ttl>event_date + INTERVAL 14 DAY DELETE</ttl>
+    </query_log>
+    <part_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </part_log>
+    <trace_log remove="remove"/>
+    <metric_log remove="remove"/>
+    <asynchronous_metric_log remove="remove"/>
+    <query_thread_log remove="remove"/>
+    <text_log remove="remove"/>
+</clickhouse>

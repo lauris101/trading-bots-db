@@ -1,0 +1,216 @@
+# trading-bots-db: the databases the trading-bots stack talks to, on their
+# own host. Nothing here knows the schema: migrations live in the app repo
+# (trading-bots/migrations, applied by its `migrator` service over the wire).
+#
+# Services:
+#   postgres    PostgreSQL 17 + wal-g (continuous WAL archiving to S3/R2)
+#   clickhouse  ClickHouse server (analytics: fills, quotes, traces)
+#   scheduler   ofelia cron: nightly base backup, retention, freshness check,
+#               docker cache trim
+#   cloudflared (profile `tunnel`) outbound-only Cloudflare Tunnel exposing
+#               the databases as TCP hostnames; no inbound ports
+#   minio       (profile `devstack`) local S3 stand-in for wal-g on a laptop
+#
+# Usage:  cp .env.example .env && $EDITOR .env && docker compose up -d
+#         (or `just up`; a fresh host: scripts/bootstrap.sh)
+#
+# Every listener binds to 127.0.0.1 on the host. Remote access is the tunnel
+# (Access-gated) or `ssh -L`; never publish these beyond loopback.
+
+name: trading-bots-db
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    build:
+      context: ./docker/postgres
+    image: trading-bots/postgres:17-walg
+    # Fixed name so ofelia job-exec and the wal-g helper scripts can target it.
+    container_name: trading-bots-postgres
+    restart: unless-stopped
+    # Archiving GUCs forced at runtime so they hold even for a pgdata volume
+    # initialized by a different image (the initdb include_if_exists snippet
+    # only runs at first initdb). walg-archive.sh is fail-soft without S3.
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=300
+      - -c
+      - archive_command=/usr/local/bin/walg-archive.sh %p
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-200}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trading-bots}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-trading-bots-db}
+      # Local-socket defaults so wal-g (archive_command, backup-push) can
+      # connect as the bootstrap superuser without extra flags.
+      PGUSER: ${POSTGRES_USER:-trading-bots}
+      PGDATABASE: ${POSTGRES_DB:-trading-bots-db}
+    env_file:
+      # The root .env is loaded into the container so wal-g (archive_command,
+      # backup-push, freshness check) sees WALG_S3_PREFIX / AWS_*. With no
+      # backend configured there, archiving is a fail-soft no-op (see ops/).
+      # Explicit `environment:` keys above win over env_file on collisions.
+      - path: ./.env
+        required: false
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Loopback by default: the tunnel (host-networked cloudflared) and
+      # ssh -L reach it here. A dev box that also runs the app stack locally
+      # sets POSTGRES_BIND=172.17.0.1 (the docker0 address: reachable from
+      # containers as host.docker.internal and from the host, from nowhere
+      # else). Never 0.0.0.0.
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      # Deliberately independent of wal-g/S3: pg_isready only.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trading-bots} -d ${POSTGRES_DB:-trading-bots-db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "${POSTGRES_CPUS:-2.0}"
+          memory: ${POSTGRES_MEMORY:-2g}
+    logging: *default-logging
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    container_name: trading-bots-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-trading-bots}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-trading_bots}
+      # Lets CLICKHOUSE_USER create further users/roles with SQL.
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - chdata:/var/lib/clickhouse
+      - ./clickhouse/config.d/trading-bots.xml:/etc/clickhouse-server/config.d/trading-bots.xml:ro
+    ports:
+      - "${CLICKHOUSE_BIND:-127.0.0.1}:${CLICKHOUSE_HTTP_PORT:-8123}:8123"   # HTTP (drivers, curl)
+      - "${CLICKHOUSE_BIND:-127.0.0.1}:${CLICKHOUSE_NATIVE_PORT:-9000}:9000" # native protocol
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "${CLICKHOUSE_CPUS:-2.0}"
+          memory: ${CLICKHOUSE_MEMORY:-4g}
+    logging: *default-logging
+
+  scheduler:
+    image: mcuadros/ofelia:0.3.22
+    restart: unless-stopped
+    command: daemon --config=/etc/ofelia/config.ini
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./cron/ofelia.ini:/etc/ofelia/config.ini:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+    logging: *default-logging
+
+  # Cloudflare Tunnel: outbound-only connection to Cloudflare's edge, so the
+  # databases are reachable as TCP hostnames with ZERO inbound ports open.
+  # Host networking so it reaches the loopback-bound listeners directly.
+  # Public hostnames (Zero Trust > Networks > Tunnels > Public Hostname):
+  #   db.<domain>   TCP  tcp://127.0.0.1:5432   postgres
+  #   ch.<domain>   TCP  tcp://127.0.0.1:9000   clickhouse native
+  #   chdb.<domain> HTTP http://127.0.0.1:8123  clickhouse HTTP (drivers, UI)
+  # Enable with `tunnel` in COMPOSE_PROFILES and CLOUDFLARE_TUNNEL_TOKEN.
+  # Deliberately `:-` not `:?`: interpolation runs before profile filtering,
+  # so `:?` would break every compose command when the profile is off.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.8.2
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    network_mode: host
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+    logging: *default-logging
+
+  # --- devstack profile: local S3 stand-in for wal-g ------------------------
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    profiles: ["devstack"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+    volumes:
+      - miniodata:/data
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-9002}:9000"          # S3 API
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"  # web console
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    logging: *default-logging
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    profiles: ["devstack"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+      WALG_BUCKET: ${WALG_BUCKET:-trading-bots-db}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for i in $$(seq 1 30); do
+          if mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; then
+            mc mb --ignore-existing "local/$$WALG_BUCKET" && exit 0
+          fi
+          echo "minio not ready yet ($$i/30)"; sleep 2
+        done
+        echo "gave up creating bucket" >&2; exit 1
+    restart: "no"
+    logging: *default-logging
+
+volumes:
+  # Names are overridable so an existing data volume can be adopted without a
+  # dump/restore: a host that ran the databases inside the old trading-bots
+  # compose project sets PGDATA_VOLUME=trading-bots_pgdata in .env.
+  pgdata:
+    name: ${PGDATA_VOLUME:-trading-bots-db_pgdata}
+  chdata:
+    name: ${CHDATA_VOLUME:-trading-bots-db_chdata}
+  miniodata:

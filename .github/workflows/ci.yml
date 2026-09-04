@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file (every profile)
+        run: |
+          cp .env.example .env
+          sed -i 's/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=ci/; s/^CLICKHOUSE_PASSWORD=$/CLICKHOUSE_PASSWORD=ci/; s/^MINIO_ROOT_PASSWORD=$/MINIO_ROOT_PASSWORD=ci/' .env
+          docker compose --env-file .env -f docker-compose.yml --profile devstack --profile tunnel config --quiet
+      - name: Shellcheck
+        run: |
+          sudo apt-get install -y -qq shellcheck >/dev/null
+          shellcheck scripts/*.sh docker/postgres/*.sh
+
+  postgres-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build postgres+wal-g image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker/postgres
+          push: false
+          cache-from: type=gha,scope=postgres
+          cache-to: type=gha,mode=max,scope=postgres
