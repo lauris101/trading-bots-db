@@ -94,22 +94,42 @@ ClickHouse has no backup job yet; its data is derivable (analytics loaded
 from postgres and from the venue feeds). Adding one is a `BACKUP DATABASE
 ... TO S3(...)` job in `cron/ofelia.ini` when the tables exist.
 
+## Where things are on disk
+
+| what | host path |
+|---|---|
+| postgres data | `${DATA_BASE_DIR}/data/trading-bots/postgres` |
+| clickhouse data | `${DATA_BASE_DIR}/data/trading-bots/clickhouse` |
+| logs | `${LOGS_BASE_DIR}/logs/trading-bots/<UTC day>/<service>.log` |
+
+Both base directories default to empty, so the defaults are
+`/data/trading-bots/...` and `/logs/trading-bots/...`. Plain directories,
+not docker volumes: `du`, `rsync` and the host's own backup see them.
+
+**Logs.** Every container logs through the docker fluentd driver to the
+`fluentd` container on this host, which appends each record to that day's
+file for that service. The scheduler's daily `logs-rotate` job (ofelia,
+`cron/ofelia.ini`) gzips finished days and removes day directories older
+than `LOG_KEEP_DAYS` (7).
+`docker compose logs <service>` still works (docker keeps a local copy).
+
 ## Moving from the app repo
 
 Until 2026-09-04 postgres ran inside the trading-bots compose project, in a
-volume named `trading-bots_pgdata`. To adopt that volume here instead of
-starting empty, set in `.env`:
+docker volume named `trading-bots_pgdata`. To carry that data over, copy it
+into the host directory while nothing runs, preserving ownership:
 
-```
-PGDATA_VOLUME=trading-bots_pgdata
+```bash
+docker compose down
+sudo mkdir -p /data/trading-bots
+sudo rsync -a /var/lib/docker/volumes/trading-bots_pgdata/_data/ /data/trading-bots/postgres/
+docker compose up -d
 ```
 
-and keep `POSTGRES_USER` / `POSTGRES_DB` / `POSTGRES_PASSWORD` as they were
-(the role and database were created at first initdb and do not change with
-the environment). Compose then prints a warning that the volume "was created
-for project trading-bots"; that is expected and harmless, it still mounts
-it. The wal-g history in the bucket continues; take a fresh base backup
-after the move (`just backup`) so a restore never has to cross it.
+Keep `POSTGRES_USER` / `POSTGRES_DB` / `POSTGRES_PASSWORD` as they were: the
+role and database were created at first initdb and do not change with the
+environment. The wal-g history in the bucket continues; take a fresh base
+backup after the move (`just backup`) so a restore never has to cross it.
 
 ## Same box as the app stack (dev)
 

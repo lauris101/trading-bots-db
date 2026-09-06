@@ -19,13 +19,53 @@
 
 name: trading-bots-db
 
+# Every container's stdout goes to the fluentd container on this host, which
+# writes ${LOGS_BASE_DIR}/logs/trading-bots/<day>/<service>.log (see
+# fluentd/fluent.conf). Async + non-blocking: a fluentd that is down never
+# blocks a database's writes. `docker compose logs` keeps working (dual
+# logging).
 x-logging: &default-logging
+  driver: fluentd
+  options:
+    fluentd-address: 127.0.0.1:${FLUENTD_PORT:-24224}
+    fluentd-async: "true"
+    fluentd-sub-second-precision: "true"
+    mode: non-blocking
+    max-buffer-size: 16m
+    tag: "trading-bots.{{.Name}}"
+
+# For fluentd itself and its helpers: the plain local driver.
+x-local-logging: &local-logging
   driver: json-file
   options:
     max-size: "10m"
     max-file: "3"
 
 services:
+  fluentd:
+    image: fluent/fluentd:v1.17-1
+    # Fixed name: the scheduler's daily log-rotate job execs into it.
+    container_name: trading-bots-db-fluentd
+    user: root
+    ports:
+      # FLUENTD_PORT: two stacks on one dev box need two listeners.
+      - "127.0.0.1:${FLUENTD_PORT:-24224}:24224"
+      - "127.0.0.1:${FLUENTD_PORT:-24224}:24224/udp"
+    environment:
+      KEEP_DAYS: ${LOG_KEEP_DAYS:-7}
+    volumes:
+      - ./fluentd/fluent.conf:/fluentd/etc/fluent.conf:ro
+      - ./fluentd/rotate.sh:/rotate.sh:ro
+      - ${LOGS_BASE_DIR:-}/logs/trading-bots:/logs
+      - fluentd-buffer:/fluentd/buffer
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    logging: *local-logging
+
   postgres:
     build:
       context: ./docker/postgres
@@ -64,7 +104,9 @@ services:
       - path: ./.env
         required: false
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # Host directory, not a named volume: the data sits where the host's
+      # disk layout says (DATA_BASE_DIR), visible to backups and to `du`.
+      - ${DATA_BASE_DIR:-}/data/trading-bots/postgres:/var/lib/postgresql/data
     ports:
       # Loopback by default: the tunnel (host-networked cloudflared) and
       # ssh -L reach it here. A dev box that also runs the app stack locally
@@ -97,7 +139,7 @@ services:
       # Lets CLICKHOUSE_USER create further users/roles with SQL.
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     volumes:
-      - chdata:/var/lib/clickhouse
+      - ${DATA_BASE_DIR:-}/data/trading-bots/clickhouse:/var/lib/clickhouse
       - ./clickhouse/config.d/trading-bots.xml:/etc/clickhouse-server/config.d/trading-bots.xml:ro
     ports:
       - "${CLICKHOUSE_BIND:-127.0.0.1}:${CLICKHOUSE_HTTP_PORT:-8123}:8123"   # HTTP (drivers, curl)
@@ -206,11 +248,6 @@ services:
     logging: *default-logging
 
 volumes:
-  # Names are overridable so an existing data volume can be adopted without a
-  # dump/restore: a host that ran the databases inside the old trading-bots
-  # compose project sets PGDATA_VOLUME=trading-bots_pgdata in .env.
-  pgdata:
-    name: ${PGDATA_VOLUME:-trading-bots-db_pgdata}
-  chdata:
-    name: ${CHDATA_VOLUME:-trading-bots-db_chdata}
+  # Database data lives in host directories (DATA_BASE_DIR), not here.
+  fluentd-buffer:
   miniodata:
