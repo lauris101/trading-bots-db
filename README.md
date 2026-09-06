@@ -53,11 +53,11 @@ listeners. In Zero Trust, Networks > Tunnels > your tunnel > Public Hostname:
 | `chdb.<domain>` | HTTP | `http://127.0.0.1:8123` |
 | `metrics-db.<domain>` | HTTP | `http://127.0.0.1:9100` (node-exporter) |
 
-Put an **Access policy** on each (Zero Trust > Access > Applications). For
-the TCP hostnames the policy is enforced by the client-side `cloudflared
-access` login; for the HTTP ones at the edge. `metrics-db.` wants a service
-token (Service Auth rule) so a remote Prometheus can scrape it with
-`CF-Access-Client-Id` / `CF-Access-Client-Secret` headers.
+Put an **Access application** on each (Zero Trust > Access > Applications)
+with two kinds of rule: **Allow** for the users who may log in from a
+browser, and **Bypass** for the source IPs that may connect without logging
+in: your own machines, the trading host (all of its public IPs), a
+Prometheus scraper for `metrics-db.`. No service tokens anywhere.
 
 **From your machine** (psql, DBeaver, clickhouse-client):
 
@@ -70,13 +70,13 @@ Each opens a local listener, pops the Access login in a browser, and proxies
 through the tunnel. Point the client at `localhost:5432` / `localhost:9000`
 with the credentials from the server's `.env`.
 
-**From the app host** (no browser): create an Access **service token**
-(Zero Trust > Access > Service Auth) and add a Service Auth rule to the
-`db.<domain>` application. The trading-bots stack runs a `db-proxy`
-sidecar, the same `cloudflared access tcp` with the token in
-`TUNNEL_SERVICE_TOKEN_ID` / `TUNNEL_SERVICE_TOKEN_SECRET`, and its services
-use `DATABASE_URL=postgres://...@db-proxy:5432/...`. See the app repo's
-`.env.example` and `ops/deploy.md`.
+**From the app host** (no browser): its public IPs are in the Bypass rule
+of the `db.<domain>` and `chdb.<domain>` applications. The trading-bots
+stack runs a `db-proxy` sidecar, the same `cloudflared access tcp` with just
+the hostname, and its services use
+`DATABASE_URL=postgres://...@db-proxy:5432/...`; ClickHouse is reached over
+HTTPS at `chdb.<domain>`. See the app repo's `.env.example` and
+`ops/deploy.md`.
 
 ## Backups
 
