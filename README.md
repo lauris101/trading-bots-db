@@ -13,8 +13,8 @@ docker-compose.yml       postgres, clickhouse, scraper, scheduler, fluentd, node
 docker/postgres/         postgres:17 + wal-g image, archive wrapper, freshness check
 clickhouse/config.d/     server overrides (console logging, memory caps, log TTLs)
 cron/ofelia.ini          nightly base backup, weekly retention, daily freshness, cache trim
-scripts/                 bootstrap.sh, deploy.sh, backup.sh, retention.sh,
-                         restore-drill.sh, db-shell.sh, ch-shell.sh
+scripts/                 bootstrap.sh, deploy.sh, pull-scraper.sh, backup.sh,
+                         retention.sh, restore-drill.sh, db-shell.sh, ch-shell.sh
 ops/                     runbooks: backup & restore, database incidents
 .env.example             the one config file (copy to .env)
 justfile                 `just --list`
@@ -101,10 +101,12 @@ the trading-bots repo, but it runs on this host: its inserts are then local,
 and there is no cloud egress from the trading host for the 100+ million
 quotes a day it writes. Where it observes from does not matter, because both
 venues stamp every quote and `quotes.ts_venue` is the axis the analysis
-joins on. The image is built and published by the app repo's CI on release
-tags (`ghcr.io/lauris101/trading-bots-scraper`, a private package: `docker
-login ghcr.io` once on this host with a token that has `read:packages`, and
-pin a tag with `SCRAPER_IMAGE`). Control on the trading host pushes it the
+joins on. The image is built by the app repo's CI on release tags and
+published to a Cloudflare R2 bucket as a zstd `docker save` tarball per tag
+(`scraper/<tag>.tar.zst` plus a manifest, last three tags kept). Set
+`IMAGES_S3_BUCKET` in `.env` and `scripts/deploy.sh` loads it with
+`scripts/pull-scraper.sh` using the same R2 credentials as wal-g (`just
+pull-scraper v0.4.0` for a specific tag). Control on the trading host pushes it the
 subscriptions derived from what the bots trade, through `scraper.<domain>`.
 It starts empty and needs nothing but ClickHouse and the venues.
 

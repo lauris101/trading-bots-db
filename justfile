@@ -40,6 +40,10 @@ retention:
 restore-drill:
     ./scripts/restore-drill.sh
 
+# Load the scraper image from R2 (a tag, or the latest) and restart it
+pull-scraper tag="latest":
+    ./scripts/pull-scraper.sh {{tag}} && {{compose}} up -d scraper
+
 # Backup freshness check (what the scheduler runs daily)
 freshness:
     docker exec -u postgres trading-bots-postgres walg-freshness.sh

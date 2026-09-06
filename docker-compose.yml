@@ -163,14 +163,16 @@ services:
           memory: ${CLICKHOUSE_MEMORY:-4g}
     logging: *default-logging
 
-  # The market-data scraper (built and published from the trading-bots repo
-  # on release tags: ghcr.io/lauris101/trading-bots-scraper). Runs here so
+  # The market-data scraper (built by the trading-bots repo's CI on release
+  # tags and published to an R2 bucket; scripts/pull-scraper.sh loads it as
+  # trading-bots/scraper:<tag> and :latest). Runs here so
   # its inserts are local: the venues stamp every quote, so where it is
   # observed does not matter, and there is no cloud egress. Control on the
   # trading host drives its subscriptions through the tunnel
   # (scraper.<domain> -> 127.0.0.1:8084, that host's IPs allowed).
   scraper:
-    image: ${SCRAPER_IMAGE:-ghcr.io/lauris101/trading-bots-scraper:latest}
+    image: ${SCRAPER_IMAGE:-trading-bots/scraper:latest}
+    pull_policy: never
     restart: unless-stopped
     environment:
       CLICKHOUSE_URL: http://clickhouse:8123

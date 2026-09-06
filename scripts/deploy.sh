@@ -8,6 +8,7 @@
 # Environment toggles:
 #   ALLOW_NO_BACKUPS=1   proceed without a wal-g backend (WALG_S3_PREFIX) in
 #                        .env -- dev/testing only
+#   SCRAPER_TAG=v0.4.0   load that scraper tag from R2 instead of latest
 #   PRUNE=1              also prune dangling images afterwards
 set -euo pipefail
 
@@ -35,6 +36,11 @@ if git -C "${REPO_ROOT}" symbolic-ref -q HEAD >/dev/null; then
   git -C "${REPO_ROOT}" pull --ff-only
 else
   echo ">>> detached HEAD -- skipping git pull"
+fi
+
+if grep -Eq '^IMAGES_S3_BUCKET=.+' "${REPO_ROOT}/.env"; then
+  echo ">>> pulling the scraper image from R2"
+  "${REPO_ROOT}/scripts/pull-scraper.sh" "${SCRAPER_TAG:-latest}"
 fi
 
 echo ">>> building images"

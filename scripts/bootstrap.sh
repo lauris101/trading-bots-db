@@ -40,7 +40,7 @@ if ! docker info >/dev/null 2>&1; then
   fi
 fi
 ${SUDO} apt-get update -qq
-${SUDO} apt-get install -y -qq just jq curl openssl git >/dev/null
+${SUDO} apt-get install -y -qq just jq curl openssl git zstd >/dev/null
 
 echo ">>> [2/3] configuration (.env)"
 if [[ ! -f "${REPO_ROOT}/.env" ]]; then
