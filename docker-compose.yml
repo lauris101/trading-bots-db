@@ -45,7 +45,8 @@ x-local-logging: &local-logging
 
 services:
   fluentd:
-    image: fluent/fluentd:v1.17-1
+    # The debian variant is the multi-arch one (amd64 + arm64: Graviton).
+    image: fluent/fluentd:v1.17-debian-1
     # Fixed name: the scheduler's daily log-rotate job execs into it.
     container_name: trading-bots-db-fluentd
     user: root
