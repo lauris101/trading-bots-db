@@ -6,7 +6,8 @@
 #   postgres    PostgreSQL 17 + wal-g (continuous WAL archiving to S3/R2)
 #   clickhouse  ClickHouse server (analytics: fills, quotes, traces)
 #   scheduler   ofelia cron: nightly base backup, retention, freshness check,
-#               docker cache trim
+#               docker cache trim, log rotation
+#   node-exporter host metrics on loopback 9100 (metrics-db.<domain>)
 #   cloudflared (profile `tunnel`) outbound-only Cloudflare Tunnel exposing
 #               the databases as TCP hostnames; no inbound ports
 #   minio       (profile `devstack`) local S3 stand-in for wal-g on a laptop
@@ -178,6 +179,26 @@ services:
           memory: 128m
     logging: *default-logging
 
+  # Host metrics (CPU, memory, disk, network) on 127.0.0.1:9100/metrics,
+  # loopback only; the tunnel's metrics-db.<domain> hostname points at it.
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      # NODE_EXPORTER_PORT: another exporter may already own 9100 on a shared box.
+      - --web.listen-address=127.0.0.1:${NODE_EXPORTER_PORT:-9100}
+    volumes:
+      - /:/host:ro,rslave
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+    logging: *local-logging
+
   # Cloudflare Tunnel: outbound-only connection to Cloudflare's edge, so the
   # databases are reachable as TCP hostnames with ZERO inbound ports open.
   # Host networking so it reaches the loopback-bound listeners directly.
@@ -185,6 +206,7 @@ services:
   #   db.<domain>   TCP  tcp://127.0.0.1:5432   postgres
   #   ch.<domain>   TCP  tcp://127.0.0.1:9000   clickhouse native
   #   chdb.<domain> HTTP http://127.0.0.1:8123  clickhouse HTTP (drivers, UI)
+  #   metrics-db.<domain> HTTP http://127.0.0.1:9100  node-exporter (NODE_EXPORTER_PORT)
   # Enable with `tunnel` in COMPOSE_PROFILES and CLOUDFLARE_TUNNEL_TOKEN.
   # Deliberately `:-` not `:?`: interpolation runs before profile filtering,
   # so `:?` would break every compose command when the profile is off.

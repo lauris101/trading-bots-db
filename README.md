@@ -9,7 +9,7 @@ truth and its `migrator` service applies it over the wire at every app
 deploy. Nothing here creates a table.
 
 ```
-docker-compose.yml       postgres, clickhouse, scheduler, cloudflared (tunnel), minio (dev)
+docker-compose.yml       postgres, clickhouse, scheduler, fluentd, node-exporter, cloudflared (tunnel), minio (dev)
 docker/postgres/         postgres:17 + wal-g image, archive wrapper, freshness check
 clickhouse/config.d/     server overrides (console logging, memory caps, log TTLs)
 cron/ofelia.ini          nightly base backup, weekly retention, daily freshness, cache trim
@@ -51,10 +51,13 @@ listeners. In Zero Trust, Networks > Tunnels > your tunnel > Public Hostname:
 | `db.<domain>` | TCP | `tcp://127.0.0.1:5432` |
 | `ch.<domain>` | TCP | `tcp://127.0.0.1:9000` |
 | `chdb.<domain>` | HTTP | `http://127.0.0.1:8123` |
+| `metrics-db.<domain>` | HTTP | `http://127.0.0.1:9100` (node-exporter) |
 
 Put an **Access policy** on each (Zero Trust > Access > Applications). For
 the TCP hostnames the policy is enforced by the client-side `cloudflared
-access` login; for the HTTP one at the edge.
+access` login; for the HTTP ones at the edge. `metrics-db.` wants a service
+token (Service Auth rule) so a remote Prometheus can scrape it with
+`CF-Access-Client-Id` / `CF-Access-Client-Secret` headers.
 
 **From your machine** (psql, DBeaver, clickhouse-client):
 
