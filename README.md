@@ -9,7 +9,7 @@ truth and its `migrator` service applies it over the wire at every app
 deploy. Nothing here creates a table.
 
 ```
-docker-compose.yml       postgres, clickhouse, scheduler, fluentd, node-exporter, cloudflared (tunnel), minio (dev)
+docker-compose.yml       postgres, clickhouse, scraper, scheduler, fluentd, node-exporter, cloudflared (tunnel), minio (dev)
 docker/postgres/         postgres:17 + wal-g image, archive wrapper, freshness check
 clickhouse/config.d/     server overrides (console logging, memory caps, log TTLs)
 cron/ofelia.ini          nightly base backup, weekly retention, daily freshness, cache trim
@@ -52,6 +52,7 @@ listeners. In Zero Trust, Networks > Tunnels > your tunnel > Public Hostname:
 | `ch.<domain>` | TCP | `tcp://127.0.0.1:9000` |
 | `chdb.<domain>` | HTTP | `http://127.0.0.1:8123` |
 | `metrics-db.<domain>` | HTTP | `http://127.0.0.1:9100` (node-exporter) |
+| `scraper.<domain>` | HTTP | `http://127.0.0.1:8084` (the scraper's API; the trading host's IPs allowed) |
 
 Put an **Access application** on each (Zero Trust > Access > Applications)
 with two kinds of rule: **Allow** for the users who may log in from a
@@ -92,6 +93,20 @@ throwaway postgres, replays WAL and runs a verification query. Run it
 regularly. Full walkthrough and point-in-time recovery:
 `ops/backup-and-restore.md`. Incidents (disk full, connections, failed
 archive, vacuum): `ops/runbook-db.md`.
+
+## The scraper runs here
+
+The market-data scraper (venue top of book into ClickHouse) is a service of
+the trading-bots repo, but it runs on this host: its inserts are then local,
+and there is no cloud egress from the trading host for the 100+ million
+quotes a day it writes. Where it observes from does not matter, because both
+venues stamp every quote and `quotes.ts_venue` is the axis the analysis
+joins on. The image is built and published by the app repo's CI on release
+tags (`ghcr.io/lauris101/trading-bots-scraper`, a private package: `docker
+login ghcr.io` once on this host with a token that has `read:packages`, and
+pin a tag with `SCRAPER_IMAGE`). Control on the trading host pushes it the
+subscriptions derived from what the bots trade, through `scraper.<domain>`.
+It starts empty and needs nothing but ClickHouse and the venues.
 
 ClickHouse has no backup job yet; its data is derivable (analytics loaded
 from postgres and from the venue feeds). Adding one is a `BACKUP DATABASE

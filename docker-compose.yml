@@ -8,6 +8,7 @@
 #   scheduler   ofelia cron: nightly base backup, retention, freshness check,
 #               docker cache trim, log rotation
 #   node-exporter host metrics on loopback 9100 (metrics-db.<domain>)
+#   scraper     venue market data into clickhouse; image from the app repo's CI
 #   cloudflared (profile `tunnel`) outbound-only Cloudflare Tunnel exposing
 #               the databases as TCP hostnames; no inbound ports
 #   minio       (profile `devstack`) local S3 stand-in for wal-g on a laptop
@@ -162,6 +163,42 @@ services:
           memory: ${CLICKHOUSE_MEMORY:-4g}
     logging: *default-logging
 
+  # The market-data scraper (built and published from the trading-bots repo
+  # on release tags: ghcr.io/lauris101/trading-bots-scraper). Runs here so
+  # its inserts are local: the venues stamp every quote, so where it is
+  # observed does not matter, and there is no cloud egress. Control on the
+  # trading host drives its subscriptions through the tunnel
+  # (scraper.<domain> -> 127.0.0.1:8084, that host's IPs allowed).
+  scraper:
+    image: ${SCRAPER_IMAGE:-ghcr.io/lauris101/trading-bots-scraper:latest}
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-trading-bots}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-trading_bots}
+      SCRAPER_ADDR: 0.0.0.0:8084
+      SCRAPER_RECORDER: ${SCRAPER_RECORDER:-db-host}
+      RUST_LOG: ${RUST_LOG:-info}
+      LOG_FORMAT: json
+    ports:
+      - "127.0.0.1:${SCRAPER_PORT:-8084}:8084"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8084/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
+    logging: *default-logging
+
   scheduler:
     image: mcuadros/ofelia:0.3.22
     restart: unless-stopped
@@ -207,6 +244,7 @@ services:
   #   ch.<domain>   TCP  tcp://127.0.0.1:9000   clickhouse native
   #   chdb.<domain> HTTP http://127.0.0.1:8123  clickhouse HTTP (drivers, UI)
   #   metrics-db.<domain> HTTP http://127.0.0.1:9100  node-exporter (NODE_EXPORTER_PORT)
+  #   scraper.<domain> HTTP http://127.0.0.1:8084  the scraper's API (control pushes subscriptions)
   # Enable with `tunnel` in COMPOSE_PROFILES and CLOUDFLARE_TUNNEL_TOKEN.
   # Deliberately `:-` not `:?`: interpolation runs before profile filtering,
   # so `:?` would break every compose command when the profile is off.
