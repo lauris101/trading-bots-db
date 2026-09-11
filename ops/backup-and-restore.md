@@ -102,9 +102,9 @@ To restore to a specific moment (e.g. just before an incident at 14:32):
 # On the APP host: stop the writers (recorder, api, collector) first --
 # trading-bots/infra/scripts/deploy.sh's compose files, `stop recorder api collector`.
 
-# Into the live data dir on a stopped stack (a base backup OLDER than the
-# target is picked automatically when TARGET_BACKUP is left at LATEST only
-# if LATEST predates the target; otherwise name one from `wal-g backup-list`):
+# Into the live data dir on a stopped stack. TARGET_BACKUP must be a base
+# backup taken BEFORE the target time (pick it from `wal-g backup-list`;
+# LATEST is right only if it predates the target):
 RECOVERY_TARGET_TIME='2026-08-29 14:31:00+00' TARGET_BACKUP=base_... FORCE=1 just restore
 just up
 # Or into a throwaway container to inspect first: the same pattern as
