@@ -44,26 +44,24 @@ ${SUDO} apt-get install -y -qq just jq curl openssl git zstd >/dev/null
 
 echo ">>> [2/3] configuration (.env)"
 if [[ ! -f "${REPO_ROOT}/.env" ]]; then
-  cp "${REPO_ROOT}/.env.example" "${REPO_ROOT}/.env"
+  if [[ "${FLAVOUR}" == "server" ]]; then
+    # The production template: tunnel profile, R2 backend, scraper bucket;
+    # no minio. Only the placeholders are left to fill in.
+    cp "${REPO_ROOT}/.env.prod.example" "${REPO_ROOT}/.env"
+  else
+    cp "${REPO_ROOT}/.env.example" "${REPO_ROOT}/.env"
+  fi
   chmod 600 "${REPO_ROOT}/.env"
   # URL-safe generated secrets (hex only).
   sed -i "s|^POSTGRES_PASSWORD=$|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" "${REPO_ROOT}/.env"
   sed -i "s|^CLICKHOUSE_PASSWORD=$|CLICKHOUSE_PASSWORD=$(openssl rand -hex 24)|" "${REPO_ROOT}/.env"
   if [[ "${FLAVOUR}" == "server" ]]; then
-    # No minio on a server; backups go to Cloudflare R2 (fill in below).
-    sed -i "s|^COMPOSE_PROFILES=devstack$|COMPOSE_PROFILES=tunnel|" "${REPO_ROOT}/.env"
-    sed -i -E "s|^(WALG_S3_PREFIX=s3://trading-bots-db/walg)$|#\1|; \
-               s|^(AWS_ENDPOINT=http://minio:9000)$|#\1|; \
-               s|^(AWS_S3_FORCE_PATH_STYLE=true)$|#\1|; \
-               s|^(AWS_REGION=us-east-1)$|#\1|; \
-               s|^(AWS_ACCESS_KEY_ID=minioadmin)$|#\1|; \
-               s|^(AWS_SECRET_ACCESS_KEY=change-me)$|#\1|" "${REPO_ROOT}/.env"
     echo ""
-    echo "    Generated ${REPO_ROOT}/.env with random database passwords."
-    echo "    NOW: edit .env and fill in"
-    echo "      - the 'Cloudflare R2' backend section (WALG_S3_PREFIX, AWS_ENDPOINT,"
-    echo "        AWS_REGION=auto, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)"
-    echo "      - CLOUDFLARE_TUNNEL_TOKEN (or drop 'tunnel' from COMPOSE_PROFILES)"
+    echo "    Generated ${REPO_ROOT}/.env (from .env.prod.example) with random database passwords."
+    echo "    NOW: edit .env and replace the <placeholders>:"
+    echo "      - AWS_ENDPOINT / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (the R2 bucket for wal-g)"
+    echo "      - CLOUDFLARE_TUNNEL_TOKEN (just db-token in trading-bots-host-setup/cloudflare)"
+    echo "      - IMAGES_S3_BUCKET, or remove the line for a host without the scraper"
     echo "    then run this script again to deploy."
     echo "    To deploy WITHOUT backups (not recommended): ALLOW_NO_BACKUPS=1 $0"
     exit 0

@@ -25,9 +25,10 @@ justfile                 `just --list`
 ```bash
 apt-get update && apt-get install -y git
 git clone git@github.com:lauris101/trading-bots-db.git && cd trading-bots-db
-scripts/bootstrap.sh     # installs docker + just, generates .env with random
-                         # passwords, then stops and asks for R2 + tunnel
-$EDITOR .env             # R2 backend section, CLOUDFLARE_TUNNEL_TOKEN
+scripts/bootstrap.sh     # installs docker + just, copies .env.prod.example to
+                         # .env with random passwords, then stops for the rest
+$EDITOR .env             # the <placeholders>: R2 keys, CLOUDFLARE_TUNNEL_TOKEN,
+                         # IMAGES_S3_BUCKET
 scripts/bootstrap.sh     # deploys; rerun after any .env change
 just backup && just restore-drill    # prove the backup pipeline
 ```
@@ -38,7 +39,9 @@ except SSH. `scripts/deploy.sh` refuses to run without a wal-g backend in
 `.env` (`ALLOW_NO_BACKUPS=1` overrides, for testing).
 
 On a laptop, `scripts/bootstrap.sh dev` gives the same stack with minio as
-the S3 stand-in (compose profile `devstack`) and no prompts.
+the S3 stand-in (compose profile `devstack`) and no prompts; `.env.example`
+is that full template with every optional setting, `.env.prod.example` the
+production one.
 
 ## Cloudflare Tunnel
 
