@@ -79,6 +79,21 @@ drill never pushes WAL), starts postgres from the restored dir on
 `select count(*) from service_heartbeats`, prints the result, and tears down.
 Tunables: `DRILL_NETWORK`, `DRILL_PORT`, `VERIFY_QUERY`, `WALG_ENV_FILE`.
 
+## Rebuilding a lost host (`just restore`)
+
+`scripts/restore-latest.sh` restores into the LIVE data directory
+(`${DATA_BASE_DIR}/data/trading-bots/postgres`), for a host rebuilt from
+scratch. It refuses to run while `trading-bots-postgres` is up or while the
+data directory is non-empty (`FORCE=1` moves a non-empty directory aside as
+`postgres.replaced-<time>`), fetches `TARGET_BACKUP` (default `LATEST`) with
+the postgres+wal-g image using the credentials in `.env`, writes
+`recovery.signal` and `restore_command = 'wal-g wal-fetch %f %p'` (plus
+`recovery_target_time` / `recovery_target_action = 'promote'` when
+`RECOVERY_TARGET_TIME` is set), and stops. Starting the stack (`just up`,
+`scripts/deploy.sh`) makes postgres replay the WAL from the bucket, promote
+onto a new timeline and resume archiving. Take a base backup then
+(`just backup`): the retention job keeps counting from it.
+
 ## Point-in-time recovery (PITR)
 
 To restore to a specific moment (e.g. just before an incident at 14:32):
@@ -87,12 +102,13 @@ To restore to a specific moment (e.g. just before an incident at 14:32):
 # On the APP host: stop the writers (recorder, api, collector) first --
 # trading-bots/infra/scripts/deploy.sh's compose files, `stop recorder api collector`.
 
-# In a fresh container (same pattern as restore-drill.sh), after backup-fetch
-# of a base backup OLDER than the target time, set in postgresql.auto.conf:
-#   restore_command = 'wal-g wal-fetch %f %p'
-#   recovery_target_time = '2026-08-29 14:31:00+00'
-#   recovery_target_action = 'promote'
-# then: touch recovery.signal  and start postgres.
+# Into the live data dir on a stopped stack (a base backup OLDER than the
+# target is picked automatically when TARGET_BACKUP is left at LATEST only
+# if LATEST predates the target; otherwise name one from `wal-g backup-list`):
+RECOVERY_TARGET_TIME='2026-08-29 14:31:00+00' TARGET_BACKUP=base_... FORCE=1 just restore
+just up
+# Or into a throwaway container to inspect first: the same pattern as
+# restore-drill.sh with the two recovery_target lines in postgresql.auto.conf.
 ```
 
 Postgres replays WAL up to the target time and promotes. Validate the data,

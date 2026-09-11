@@ -40,6 +40,10 @@ retention:
 restore-drill:
     ./scripts/restore-drill.sh
 
+# Rebuild the LIVE postgres data dir from the bucket (a lost host): stack stopped, data dir empty
+restore:
+    ./scripts/restore-latest.sh
+
 # Load the scraper image from R2 (a tag, or the latest) and restart it
 pull-scraper tag="latest":
     ./scripts/pull-scraper.sh {{tag}} && {{compose}} up -d scraper

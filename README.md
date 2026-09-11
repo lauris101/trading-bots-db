@@ -33,6 +33,24 @@ scripts/bootstrap.sh     # deploys; rerun after any .env change
 just backup && just restore-drill    # prove the backup pipeline
 ```
 
+Rebuilding a LOST host from the backups is the same sequence with one step
+inserted, before the second bootstrap (nothing is automatic: a fresh host
+must never overwrite a cluster on its own):
+
+```bash
+scripts/bootstrap.sh     # deps, .env (the SAME R2 bucket and credentials as before)
+$EDITOR .env
+just restore             # scripts/restore-latest.sh: fetch LATEST into the data dir,
+                         # set up WAL replay from the bucket (PITR: RECOVERY_TARGET_TIME)
+scripts/bootstrap.sh     # starts the stack; postgres replays WAL and promotes
+just backup              # first base backup on the new timeline
+```
+
+ClickHouse has no backup; the trading host re-creates its schema and refills
+it from the venues and from postgres. Then point the trading host's
+`DATABASE_URL` at the new address if it changed (the tunnel hostname does
+not).
+
 Every listener binds to `127.0.0.1` on the host: postgres `5432`, ClickHouse
 `8123` (HTTP) and `9000` (native). Nothing needs to be open on the firewall
 except SSH. `scripts/deploy.sh` refuses to run without a wal-g backend in
