@@ -5,3 +5,4 @@
 
 # Claude Code worktrees (agent scratch)
 .claude/worktrees/
+!.env.prod.example
