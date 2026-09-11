@@ -32,6 +32,11 @@ PGUSER="${POSTGRES_USER:-$(env_file_val POSTGRES_USER)}"
 PGUSER="${PGUSER:-trading-bots}"
 PGDB="${POSTGRES_DB:-$(env_file_val POSTGRES_DB)}"
 PGDB="${PGDB:-trading-bots-db}"
+# Recovery refuses to start with max_connections below the primary's (the
+# value is in the WAL); the primary runs with POSTGRES_MAX_CONNECTIONS
+# (docker-compose.yml, default 200), so the drill does too.
+MAXCONN="${POSTGRES_MAX_CONNECTIONS:-$(env_file_val POSTGRES_MAX_CONNECTIONS)}"
+MAXCONN="${MAXCONN:-200}"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "error: ${ENV_FILE} not found - wal-g has no S3 target to restore from" >&2
@@ -62,6 +67,7 @@ docker exec -u postgres "${CONTAINER}" bash -c "
   touch '${RESTORE_DIR}/recovery.signal'
   {
     echo \"restore_command = 'wal-g wal-fetch %f %p'\"
+    echo 'max_connections = ${MAXCONN}'  # at least the primary's, or recovery aborts
     echo 'archive_mode = off'      # never push WAL from a drill
     echo 'logging_collector = on'  # server log to \${RESTORE_DIR}/log/ so
     echo \"log_directory = 'log'\" # failure diagnostics below have a file
