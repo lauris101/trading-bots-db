@@ -20,7 +20,10 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IMAGE="${DRILL_IMAGE:-trading-bots/postgres:17-walg}"
 NETWORK="${DRILL_NETWORK:-trading-bots-db_default}"
 PORT="${DRILL_PORT:-5433}"
-QUERY="${VERIFY_QUERY:-select count(*) from service_heartbeats}"
+# The default query needs no application schema: a freshly bootstrapped host
+# has no tables yet (the trading-bots migrator creates them), and the drill
+# proves the RESTORE, not the schema. VERIFY_QUERY overrides it.
+QUERY="${VERIFY_QUERY:-select count(*) || ' tables in public' from pg_tables where schemaname = 'public'}"
 ENV_FILE="${WALG_ENV_FILE:-${REPO_ROOT}/.env}"
 CONTAINER="trading-bots-restore-drill"
 RESTORE_DIR=/var/lib/postgresql/restore
