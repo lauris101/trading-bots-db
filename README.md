@@ -72,6 +72,7 @@ listeners. In Zero Trust, Networks > Tunnels > your tunnel > Public Hostname:
 | `db.<domain>` | TCP | `tcp://127.0.0.1:5432` |
 | `ch.<domain>` | TCP | `tcp://127.0.0.1:9000` |
 | `chdb.<domain>` | HTTP | `http://127.0.0.1:8123` |
+| `chhttp.<domain>` | TCP | `tcp://127.0.0.1:8123` (the HTTP interface as a TCP route, so `cloudflared access tcp` can forward it to JDBC clients such as DataGrip) |
 | `metrics-db.<domain>` | HTTP | `http://127.0.0.1:9100` (node-exporter) |
 | `scraper.<domain>` | HTTP | `http://127.0.0.1:8084` (the scraper's API; the trading host's IPs allowed) |
 
@@ -86,6 +87,7 @@ Prometheus scraper for `metrics-db.`. No service tokens anywhere.
 ```bash
 cloudflared access tcp --hostname db.<domain> --url 127.0.0.1:5432
 cloudflared access tcp --hostname ch.<domain> --url 127.0.0.1:9000
+cloudflared access tcp --hostname chhttp.<domain> --url 127.0.0.1:18123   # DataGrip: http://127.0.0.1:18123
 ```
 
 Each opens a local listener, pops the Access login in a browser, and proxies
