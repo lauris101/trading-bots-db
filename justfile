@@ -55,3 +55,13 @@ freshness:
 # Validate the compose file against the current .env
 check:
     {{compose}} config --quiet && echo "compose config ok"
+
+# Explain a recipe from ops/just.md, e.g. `just help restore`; no argument lists them all
+help *recipe:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    doc="{{justfile_directory()}}/ops/just.md"
+    if [ -z "{{recipe}}" ]; then just --list; echo; echo "just help <recipe> explains one; the whole guide: $doc"; exit 0; fi
+    row="$(grep -E '^\| `just {{recipe}}( |`)' "$doc" || true)"
+    if [ -z "$row" ]; then echo "no recipe '{{recipe}}' in $doc"; exit 1; fi
+    echo "$row" | sed -e 's/^| //' -e 's/ |$//' | awk -F' \\| ' '{ printf "%s\n  runs: %s\n  use:  %s\n", $1, $2, $3 }'

@@ -14,6 +14,7 @@ recipes read `.env`; the compose recipes run `docker compose --env-file
 | `just ps` | `compose ps` | Container status. |
 | `just logs <svc>` | `compose logs -f <svc>` | Follow one service's log, e.g. `just logs postgres`. |
 | `just check` | `compose config --quiet` | Validate the compose file against the current `.env`. |
+| `just help [recipe]` | prints the matching row of this page | Explain one recipe on the host, e.g. `just help restore`; without an argument, `just --list` plus a pointer here. |
 
 ## Shells
 
