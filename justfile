@@ -44,9 +44,9 @@ restore-drill:
 restore:
     ./scripts/restore-latest.sh
 
-# Load the scraper image from R2 (a tag, or the latest) and restart it
+# Load the scraper image from R2 (a tag, or the latest) and recreate ONLY the scraper (--no-deps: the databases are never touched)
 pull-scraper tag="latest":
-    ./scripts/pull-scraper.sh {{tag}} && {{compose}} up -d scraper
+    ./scripts/pull-scraper.sh {{tag}} && {{compose}} up -d --no-deps scraper
 
 # Backup freshness check (what the scheduler runs daily)
 freshness:
