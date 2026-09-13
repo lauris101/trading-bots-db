@@ -17,7 +17,7 @@ scripts/                 bootstrap.sh, deploy.sh, pull-scraper.sh, backup.sh,
                          retention.sh, restore-drill.sh, db-shell.sh, ch-shell.sh
 ops/                     runbooks: backup & restore, database incidents
 .env.example             the one config file (copy to .env)
-justfile                 `just --list`
+justfile                 `just --list`; every recipe explained in ops/just.md
 ```
 
 ## Fresh server
