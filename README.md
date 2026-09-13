@@ -131,19 +131,6 @@ pull-scraper v0.4.0` for a specific tag). Control on the trading host pushes it 
 subscriptions derived from what the bots trade, through `scraper.<domain>`.
 It starts empty and needs nothing but ClickHouse and the venues.
 
-Releasing it touches only its container: `just pull-scraper v0.5.0` loads the
-tag and recreates the scraper with `--no-deps`; the databases keep running,
-and control re-pushes the subscriptions within seconds. The app repo's CI
-does this itself once a tag's image is published (job `deploy-scraper`): it
-logs in as the stack user with a dedicated key that sshd binds to
-`scripts/ci-deploy-scraper.sh`, which accepts `deploy-scraper <tag>` and
-nothing else, fast-forwards this repo and runs the recipe above. The key is
-placed by trading-bots-host-setup (`ci_deploy_public_key`); the workflow
-needs the GitHub secrets `DB_HOST_DEPLOY_KEY` (private half) and
-`DB_HOST_KNOWN_HOSTS` (the host's `ssh-keyscan` line), the variables
-`DB_HOST` (address or `db-host.<domain>`), `DB_HOST_USER` (default
-`trading-bot`) and `DEPLOY_SCRAPER=true` to switch the job on.
-
 ClickHouse has no backup job yet; its data is derivable (analytics loaded
 from postgres and from the venue feeds). Adding one is a `BACKUP DATABASE
 ... TO S3(...)` job in `cron/ofelia.ini` when the tables exist.
