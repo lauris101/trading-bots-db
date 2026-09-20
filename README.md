@@ -106,8 +106,9 @@ HTTPS at `chdb.<domain>`. See the app repo's `.env.example` and
 
 Postgres runs with `archive_mode=on`; wal-g ships every WAL segment as it
 closes (at most 5 minutes behind via `archive_timeout`). The `scheduler`
-(ofelia) pushes a nightly base backup at 02:30, applies `retain FULL 7`
-weekly, and runs a freshness check daily that writes a `walg-backup` row
+(ofelia) pushes a nightly base backup at 02:30, applies `retain FULL 2`
+daily at 03:30 (two base backups and only the WAL either needs; older
+backups and their WAL leave R2), and runs a freshness check daily that writes a `walg-backup` row
 into the app's `service_heartbeats` table, so backup health shows up in the
 app's `GET /status`. **Fail-soft**: with no `WALG_S3_PREFIX` archiving is a
 no-op; with one configured, failures make postgres retain and retry WAL

@@ -3,7 +3,7 @@
 #
 # Usage:
 #   scripts/backup.sh            # base backup now
-#   scripts/backup.sh --retain   # base backup, then `delete retain FULL 7`
+#   scripts/backup.sh --retain   # base backup, then `delete retain FULL 2`
 #
 # The container already carries the wal-g env (root .env via env_file) and
 # PGUSER/PGDATABASE, so this is a thin docker-exec wrapper.
