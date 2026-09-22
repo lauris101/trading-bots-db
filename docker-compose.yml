@@ -182,12 +182,18 @@ services:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-trading_bots}
       SCRAPER_ADDR: 0.0.0.0:8084
       SCRAPER_RECORDER: ${SCRAPER_RECORDER:-db-host}
+      # Wallet subscriptions (a Hyperliquid address's orders and fills, one
+      # socket each) go to Postgres; without this the scraper refuses them.
+      DATABASE_URL: postgres://${POSTGRES_USER:-trading-bots}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-trading-bots-db}
+      SCRAPER_WALLET_BUDGET: ${SCRAPER_WALLET_BUDGET:-10}
       RUST_LOG: ${RUST_LOG:-info}
       LOG_FORMAT: json
     ports:
       - "127.0.0.1:${SCRAPER_PORT:-8084}:8084"
     depends_on:
       clickhouse:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8084/health"]
