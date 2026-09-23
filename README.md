@@ -125,8 +125,9 @@ the trading-bots repo, but it runs on this host: its inserts are then local,
 and there is no cloud egress from the trading host for the 100+ million
 quotes a day it writes. Where it observes from does not matter, because both
 venues stamp every quote and `quotes.ts_venue` is the axis the analysis
-joins on. The image is built by the app repo's CI on release tags and
-published to a Cloudflare R2 bucket as a zstd `docker save` tarball per tag
+joins on. The image is built and published per release tag by the app
+repo's `just publish-scraper <tag>` (from the trading host or a dev box) to
+a Cloudflare R2 bucket as a zstd `docker save` tarball per tag
 (`scraper/<tag>.tar.zst` plus a manifest, last three tags kept). Set
 `IMAGES_S3_BUCKET` in `.env` and `scripts/deploy.sh` loads it with
 `scripts/pull-scraper.sh` using the same R2 credentials as wal-g (`just
