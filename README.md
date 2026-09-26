@@ -118,6 +118,12 @@ regularly. Full walkthrough and point-in-time recovery:
 `ops/backup-and-restore.md`. Incidents (disk full, connections, failed
 archive, vacuum): `ops/runbook-db.md`.
 
+Ofelia reads `cron/ofelia.ini` once, at start. `scripts/deploy.sh` exports
+the file's hash as the scheduler's `OFELIA_CONFIG_HASH`, so its `up -d`
+recreates the scheduler when the file changed and not otherwise; after a
+bare `git pull`, `docker compose up -d --force-recreate scheduler` does the
+same by hand.
+
 ## The scraper runs here
 
 The market-data scraper (venue top of book into ClickHouse) is a service of

@@ -218,6 +218,13 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./cron/ofelia.ini:/etc/ofelia/config.ini:ro
+    # Ofelia reads its config once, at start, and compose does not recreate
+    # a container because a bind-mounted file changed. The deploy exports
+    # the ini's hash here, so `up -d` recreates the scheduler exactly when
+    # the file did (the 2026-09-20 retention change ran nothing for six
+    # days for want of this).
+    environment:
+      OFELIA_CONFIG_HASH: ${OFELIA_CONFIG_HASH:-unpinned}
     deploy:
       resources:
         limits:

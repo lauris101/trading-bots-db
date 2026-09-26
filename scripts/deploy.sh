@@ -17,6 +17,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 COMPOSE=(docker compose --env-file "${REPO_ROOT}/.env" -f "${REPO_ROOT}/docker-compose.yml")
 
+# The scheduler's config hash rides in its environment (docker-compose.yml),
+# so the roll below recreates it when cron/ofelia.ini changed and leaves it
+# alone otherwise; ofelia only reads the file at start.
+OFELIA_CONFIG_HASH="$(sha256sum "${REPO_ROOT}/cron/ofelia.ini" | cut -c1-16)"
+export OFELIA_CONFIG_HASH
+
 # Reclaim disk after a successful roll. The images a rebuild replaced are now
 # dangling and the BuildKit cache grows by GBs per rebuild; both are pruned
 # here (and nightly by the scheduler's docker-cache-prune job) so a host with
