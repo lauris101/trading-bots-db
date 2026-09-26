@@ -32,7 +32,7 @@ ch *args:
 backup:
     ./scripts/backup.sh
 
-# Apply retention: keep the newest 7 full backups
+# Apply retention: keep the newest 2 full backups (what the scheduler runs daily)
 retention:
     ./scripts/retention.sh
 
