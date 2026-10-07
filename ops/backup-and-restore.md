@@ -94,6 +94,63 @@ the postgres+wal-g image using the credentials in `.env`, writes
 onto a new timeline and resume archiving. Take a base backup then
 (`just backup`): the retention job keeps counting from it.
 
+## Moving to a new host
+
+Every client reaches this host through the Cloudflare tunnel hostnames
+(`db.`, `ch.`, `chdb.`, `scraper.`, `metrics-db.<domain>`), so the trading
+host, Grafana, Prometheus and Uptime Kuma change nothing when the new host
+runs the same tunnel (the same `CLOUDFLARE_TUNNEL_TOKEN`). Postgres comes
+back from the bucket; ClickHouse starts empty (its tables live a day) and
+the app's `ch-migrator` recreates the schema; the scraper image comes from
+R2. Control keeps the record frames it cannot write while Postgres is
+unreachable (20,000 frames, retried in order) and the bot queues its frames
+for control, so trading continues through the cut-over.
+
+Prepare, old host live:
+
+1. Provision the VPS: `trading-bots-host-setup/db-host`, `just bootstrap`
+   then `just provision`.
+2. On it: clone this repo, `scripts/bootstrap.sh`, then copy the OLD host's
+   `.env` over the generated one: the same R2 credentials and
+   `WALG_S3_PREFIX` (the backups), `IMAGES_S3_BUCKET`, the same Postgres
+   passwords (the app's `DATABASE_URL` carries them), the same tunnel
+   token. Do not deploy yet: two hosts on one tunnel both answer.
+3. Old host: `just restore-drill`, so the bucket is known to restore.
+
+Cut over, in this order:
+
+4. Old host: `just backup` (a fresh base backup: the WAL to replay is
+   minutes, not a day).
+5. Old host: `just psql -c "select pg_switch_wal()"` then `just down`. The
+   switch archives the last partial segment; a plain shutdown leaves it on
+   disk.
+6. New host: `just restore`, then `scripts/deploy.sh`. Postgres replays the
+   WAL from the bucket and promotes onto a new timeline (`just logs
+   postgres`: "ready to accept connections"); `just psql -c 'select
+   max(fill_at) from bot_fills'` should be minutes before step 5. The
+   deploy also starts ClickHouse (empty), fluentd, node-exporter, the
+   scheduler and `cloudflared`: the hostnames now point here.
+7. New host: `just pull-scraper <tag>` (the tag the trading host runs).
+8. Trading host: `just deploy <tag>`: `db-check` passes against the new
+   Postgres, the Postgres migrator is a no-op, `ch-migrator` recreates the
+   ClickHouse schema, and control re-pushes the scraper's subscriptions
+   within 10 s.
+
+Verify:
+
+- `GET /health/all` says `"db":"ok"`; `GET /jobs` shows `unwritten_frames`
+  draining to 0 and `frames_written_late` counting the cut-over's records;
+  `record-retry` ok.
+- `GET /scraper`: `rows_hl`, `rows_binance`, `rows_okx` climbing,
+  `hl_connected` true per venue; `GET /collector/addresses` shows last
+  fills minutes old.
+- Prometheus `up{instance="metrics-db..."}` is 1; Uptime Kuma green.
+- New host: `just backup` (the first base backup on the new timeline;
+  retention counts from it), then `just restore-drill`. The `walg-backup`
+  heartbeat appears at the next 06:00.
+
+Decommission the old host only after that: `just down`, then delete it.
+
 ## Point-in-time recovery (PITR)
 
 To restore to a specific moment (e.g. just before an incident at 14:32):
