@@ -91,6 +91,19 @@ services:
       - archive_command=/usr/local/bin/walg-archive.sh %p
       - -c
       - max_connections=${POSTGRES_MAX_CONNECTIONS:-200}
+      # A client that vanishes mid-transaction (the tunnel dropped it)
+      # must not keep its locks: 2026-10-13 an orphaned bot_orders upsert
+      # blocked every retry of the same cloid for 15 minutes. The idle
+      # timeout ends such a transaction; the keepalives notice the dead
+      # peer within a minute instead of the kernel's two hours.
+      - -c
+      - idle_in_transaction_session_timeout=30s
+      - -c
+      - tcp_keepalives_idle=60
+      - -c
+      - tcp_keepalives_interval=10
+      - -c
+      - tcp_keepalives_count=3
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-trading-bots}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
