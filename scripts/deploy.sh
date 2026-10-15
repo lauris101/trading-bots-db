@@ -11,6 +11,9 @@
 #   SCRAPER_TAG=v0.4.0   load that scraper tag from R2 instead of latest
 #   NO_PRUNE=1           skip the disk cleanup after the roll (dangling images
 #                        and build cache over BUILD_CACHE_KEEP, default 5GB)
+#   FRESH_CLUSTER=1      start an empty postgres although the wal-g backend
+#                        already holds base backups (refused otherwise: a new
+#                        host on an old bucket restores first, `just restore`)
 #   BUILD_CACHE_KEEP=5GB how much BuildKit cache to leave for incremental builds
 set -euo pipefail
 
@@ -71,6 +74,33 @@ fi
 
 echo ">>> building images"
 "${COMPOSE[@]}" build --pull
+
+# A host with NO postgres data directory and a backend that already holds
+# base backups is a new box on an old bucket: a migration, or a rebuild. Up
+# would initdb an empty cluster, archive its WAL into the live prefix next
+# to the real cluster's, and, on the shared tunnel token, start answering
+# the app's queries with nothing in it. Refuse; `just restore` first.
+# FRESH_CLUSTER=1 is the way to start an empty database on a used prefix on
+# purpose.
+env_file_val() { sed -n "s/^${1}=//p" "${REPO_ROOT}/.env" | tail -1; }
+PG_DATA_DIR="$(env_file_val DATA_BASE_DIR)/data/trading-bots/postgres"
+if grep -Eq '^WALG_S3_PREFIX=.+' "${REPO_ROOT}/.env" \
+  && [[ -z "$(ls -A "${PG_DATA_DIR}" 2>/dev/null)" ]] \
+  && ! docker ps -q -f "name=^trading-bots-postgres$" | grep -q . \
+  && [[ "${FRESH_CLUSTER:-0}" != "1" ]]; then
+  echo ">>> no postgres data directory: checking the backend for an existing cluster"
+  backups="$(docker run --rm --env-file "${REPO_ROOT}/.env" trading-bots/postgres:17-walg \
+    su postgres -c 'wal-g backup-list' 2>/dev/null | grep -c '^base_' || true)"
+  if [[ "${backups}" != "0" ]]; then
+    echo "error: ${PG_DATA_DIR} is empty but $(env_file_val WALG_S3_PREFIX) holds ${backups} base backup(s)." >&2
+    echo "       Starting now would initdb an EMPTY cluster, archive its WAL into that prefix" >&2
+    echo "       and, on the shared tunnel, serve the app from it. Restore first:" >&2
+    echo "         just restore && scripts/deploy.sh" >&2
+    echo "       To start an empty database on this prefix on purpose: FRESH_CLUSTER=1 scripts/deploy.sh" >&2
+    exit 1
+  fi
+  echo "    no backups on the backend: a first deploy, initdb goes ahead"
+fi
 
 echo ">>> rolling the stack"
 "${COMPOSE[@]}" up -d --remove-orphans

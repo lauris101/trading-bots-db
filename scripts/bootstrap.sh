@@ -9,6 +9,11 @@
 #   scripts/bootstrap.sh          # deploys
 #
 # For a laptop (minio as the S3 stand-in, no prompts): bootstrap.sh dev
+#
+# A host provisioned by trading-bots-host-setup/db-host already has the
+# dependencies: there, put .env in place and run scripts/deploy.sh (after
+# `just restore` on a migration or rebuild). deploy.sh refuses to start an
+# empty postgres while the wal-g prefix holds base backups.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

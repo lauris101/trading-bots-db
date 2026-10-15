@@ -34,8 +34,12 @@ just backup && just restore-drill    # prove the backup pipeline
 ```
 
 Rebuilding a LOST host from the backups is the same sequence with one step
-inserted, before the second bootstrap (nothing is automatic: a fresh host
-must never overwrite a cluster on its own):
+inserted, before the second bootstrap. Nothing is automatic: a fresh host
+must never overwrite a cluster on its own, and `deploy.sh` refuses to start
+an empty Postgres while the prefix in `.env` holds base backups
+(`FRESH_CLUSTER=1` overrides, for an empty database on a used prefix on
+purpose). Moving to a new host while the old one runs is in
+`ops/backup-and-restore.md`, "Moving to a new host".
 
 ```bash
 scripts/bootstrap.sh     # deps, .env (the SAME R2 bucket and credentials as before)

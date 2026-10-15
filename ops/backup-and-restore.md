@@ -109,12 +109,17 @@ for control, so trading continues through the cut-over.
 Prepare, old host live:
 
 1. Provision the VPS: `trading-bots-host-setup/db-host`, `just bootstrap`
-   then `just provision`.
-2. On it: clone this repo, `scripts/bootstrap.sh`, then copy the OLD host's
-   `.env` over the generated one: the same R2 credentials and
-   `WALG_S3_PREFIX` (the backups), `IMAGES_S3_BUCKET`, the same Postgres
-   passwords (the app's `DATABASE_URL` carries them), the same tunnel
-   token. Do not deploy yet: two hosts on one tunnel both answer.
+   then `just provision`. The roles install Docker, `just`, `jq` and
+   `zstd`, so `scripts/bootstrap.sh` is not needed on this host; do not run
+   it, its last step is a deploy.
+2. On it, as `trading-bot`: clone this repo and copy the OLD host's `.env`
+   in (`chmod 600`): the same R2 credentials and `WALG_S3_PREFIX` (the
+   backups), `IMAGES_S3_BUCKET`, the same Postgres passwords (the app's
+   `DATABASE_URL` carries them), the same tunnel token. Do not deploy yet:
+   two hosts on one tunnel both answer. `deploy.sh` refuses to start a
+   host whose Postgres data directory is empty while the prefix holds base
+   backups, so an early deploy stops at that check instead of serving an
+   empty database on the shared tunnel.
 3. Old host: `just restore-drill`, so the bucket is known to restore.
 
 Cut over, in this order:
