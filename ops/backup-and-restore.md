@@ -103,8 +103,10 @@ runs the same tunnel (the same `CLOUDFLARE_TUNNEL_TOKEN`). Postgres comes
 back from the bucket; ClickHouse starts empty (its tables live a day) and
 the app's `ch-migrator` recreates the schema; the scraper image comes from
 R2. Control keeps the record frames it cannot write while Postgres is
-unreachable (20,000 frames, retried in order) and the bot queues its frames
-for control, so trading continues through the cut-over.
+unreachable (20,000 frames, retried in order), spills them to its named
+volume at a stop and loads them at the next start, and the bot queues its
+frames for control the same way, so trading continues through the
+cut-over and a deploy during it loses nothing.
 
 Prepare, old host live:
 
