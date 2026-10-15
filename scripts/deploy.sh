@@ -75,6 +75,8 @@ fi
 echo ">>> building images"
 "${COMPOSE[@]}" build --pull
 
+# The data directory is read as root: it is postgres-owned 0700 once a
+# cluster exists, and an unprivileged ls would call it empty.
 # A host with NO postgres data directory and a backend that already holds
 # base backups is a new box on an old bucket: a migration, or a rebuild. Up
 # would initdb an empty cluster, archive its WAL into the live prefix next
@@ -85,7 +87,7 @@ echo ">>> building images"
 env_file_val() { sed -n "s/^${1}=//p" "${REPO_ROOT}/.env" | tail -1; }
 PG_DATA_DIR="$(env_file_val DATA_BASE_DIR)/data/trading-bots/postgres"
 if grep -Eq '^WALG_S3_PREFIX=.+' "${REPO_ROOT}/.env" \
-  && [[ -z "$(ls -A "${PG_DATA_DIR}" 2>/dev/null)" ]] \
+  && [[ ! -d "${PG_DATA_DIR}" || -z "$(sudo ls -A "${PG_DATA_DIR}")" ]] \
   && ! docker ps -q -f "name=^trading-bots-postgres$" | grep -q . \
   && [[ "${FRESH_CLUSTER:-0}" != "1" ]]; then
   echo ">>> no postgres data directory: checking the backend for an existing cluster"

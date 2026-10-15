@@ -38,7 +38,9 @@ if docker ps -q -f "name=^${CONTAINER_LIVE}$" | grep -q .; then
   echo "error: ${CONTAINER_LIVE} is running. Stop the stack first: just down" >&2
   exit 1
 fi
-if [[ -d "${DATA_DIR}" ]] && [[ -n "$(ls -A "${DATA_DIR}" 2>/dev/null)" ]]; then
+# Read as root: after a fetch the directory is postgres-owned 0700, and an
+# unprivileged `ls` fails silently, which reads as "empty".
+if [[ -d "${DATA_DIR}" ]] && [[ -n "$(sudo ls -A "${DATA_DIR}")" ]]; then
   if [[ "${FORCE:-0}" != "1" ]]; then
     echo "error: ${DATA_DIR} is not empty. A restore must never overwrite a cluster" >&2
     echo "       that might still be wanted. FORCE=1 moves it aside first." >&2
