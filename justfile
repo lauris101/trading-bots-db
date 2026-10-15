@@ -20,13 +20,15 @@ ps:
 logs svc:
     {{compose}} logs -f {{svc}}
 
-# psql shell into the database
+# psql shell into the database; the arguments pass through quoted, e.g. just psql -c "select pg_switch_wal()"
+[positional-arguments]
 psql *args:
-    ./scripts/db-shell.sh {{args}}
+    ./scripts/db-shell.sh "$@"
 
-# clickhouse-client shell
+# clickhouse-client shell; the arguments pass through quoted
+[positional-arguments]
 ch *args:
-    ./scripts/ch-shell.sh {{args}}
+    ./scripts/ch-shell.sh "$@"
 
 # Push a wal-g base backup now
 backup:
