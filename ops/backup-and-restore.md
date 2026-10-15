@@ -132,7 +132,10 @@ Cut over, in this order:
 6. New host: `just restore`, then `scripts/deploy.sh`. Postgres replays the
    WAL from the bucket and promotes onto a new timeline (`just logs
    postgres`: "ready to accept connections"); `just psql -c 'select
-   max(fill_at) from bot_fills'` should be minutes before step 5. The
+   max(fill_at) from bot_fills'` should be minutes before step 5. Then
+   `just psql -c analyze`: a restored cluster carries no planner
+   statistics, and until autovacuum collects them every query plans
+   blind. The
    deploy also starts ClickHouse (empty), fluentd, node-exporter, the
    scheduler and `cloudflared`: the hostnames now point here.
 7. New host: `just pull-scraper <tag>` (the tag the trading host runs).
