@@ -225,6 +225,11 @@ services:
     image: mcuadros/ofelia:0.3.22
     restart: unless-stopped
     command: daemon --config=/etc/ofelia/config.ini
+    # Restarted by the host's docker.service drop-in after every daemon
+    # start (scripts/bootstrap.sh, host-setup's docker role): ofelia keeps
+    # a dead client connection across a daemon restart otherwise.
+    labels:
+      io.lz-co.restart-after-docker: "true"
     depends_on:
       postgres:
         condition: service_healthy

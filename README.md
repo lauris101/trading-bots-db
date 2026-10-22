@@ -128,6 +128,14 @@ recreates the scheduler when the file changed and not otherwise; after a
 bare `git pull`, `docker compose up -d --force-recreate scheduler` does the
 same by hand.
 
+Ofelia also keeps its client connection to the docker daemon and does not
+reconnect after the daemon restarts (a docker or containerd upgrade); under
+live-restore the container is not restarted either, so every job fails with
+"cannot connect to Docker endpoint" until it is. The host's `docker.service`
+drop-in (`scripts/bootstrap.sh`, or host-setup's docker role) restarts the
+containers labelled `io.lz-co.restart-after-docker=true` after every daemon
+start. Incident notes: `ops/runbook-db.md`.
+
 ## The scraper runs here
 
 The market-data scraper (venue top of book into ClickHouse) is a service of

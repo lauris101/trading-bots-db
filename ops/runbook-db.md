@@ -75,6 +75,30 @@ select * from pg_stat_archiver;
    empty" usually means the .env wal-g backend never reached the container (recreate it).
 4. After recovery, run `just backup` so a fresh base backup brackets the gap.
 
+## Scheduler jobs all fail: "cannot connect to Docker endpoint"
+
+Every ofelia job in `scheduler.log` fails within a millisecond of starting,
+`error creating exec: cannot connect to Docker endpoint` (or `dial unix
+/var/run/docker.sock: connection refused` for the `job-run` prunes), from
+some moment on. The docker daemon restarted at that moment (`sudo
+journalctl -u docker`; a containerd or docker package upgrade, see
+`/var/log/apt/history.log`); the containers survived it (live-restore) and
+the scheduler kept its dead client connection. Nothing ran: no base backup,
+no retention, no freshness check, so the `walg-backup` heartbeat in the
+app's `GET /status` goes stale.
+
+1. `docker compose restart scheduler`, and confirm the next job in
+   `scheduler.log` finishes with `failed: false`.
+2. Take the missed base backup and rewrite the heartbeat:
+   ```bash
+   just backup
+   docker exec -u postgres trading-bots-postgres walg-freshness.sh
+   ```
+3. If this happened at all, the host lacks the `docker.service` drop-in that
+   restarts the scheduler after a daemon start: re-run `scripts/bootstrap.sh`
+   (or host-setup's `just provision`) and check
+   `/etc/systemd/system/docker.service.d/restart-socket-clients.conf` exists.
+
 ## Vacuum basics
 
 - Autovacuum is ON by default — do not disable it.

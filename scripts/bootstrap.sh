@@ -46,6 +46,24 @@ if ! docker info >/dev/null 2>&1; then
 fi
 ${SUDO} apt-get update -qq
 ${SUDO} apt-get install -y -qq just jq curl openssl git zstd >/dev/null
+# Host side of a docker fact: a container that holds a client connection to
+# the daemon keeps a dead one across a daemon restart under live-restore,
+# since the container itself is not restarted. A docker.service drop-in
+# restarts the containers that opt in by label whenever the daemon starts;
+# which ones opt in is the compose file's business (the scheduler does).
+# The same drop-in comes from trading-bots-host-setup's docker role on a
+# provisioned host; this keeps a bootstrapped host equal to it.
+echo "    docker.service drop-in: restart labelled containers after a daemon start"
+${SUDO} mkdir -p /etc/systemd/system/docker.service.d
+${SUDO} tee /etc/systemd/system/docker.service.d/restart-socket-clients.conf >/dev/null <<'DROPIN'
+[Service]
+# Containers that hold a client connection to the daemon keep a dead one
+# across a daemon restart under live-restore. Restart the ones that opt in
+# by label once the API is back; a failure here (the stack not up yet at
+# boot) must not fail the docker unit.
+ExecStartPost=-/bin/sh -c 'sleep 5; /usr/bin/docker ps -q --filter label=io.lz-co.restart-after-docker=true | xargs -r /usr/bin/docker restart'
+DROPIN
+${SUDO} systemctl daemon-reload
 
 echo ">>> [2/3] configuration (.env)"
 if [[ ! -f "${REPO_ROOT}/.env" ]]; then
