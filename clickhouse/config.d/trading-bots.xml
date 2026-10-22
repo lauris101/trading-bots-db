@@ -14,8 +14,17 @@
         <errorlog remove="remove"/>
     </logger>
 
-    <!-- Share the host with postgres: cap the server at a fraction of RAM
-         and keep one query from taking all of that. -->
+    <!-- Share the host with postgres: cap the server under the container's
+         memory limit (CLICKHOUSE_MEMORY, 4g) and keep one query from taking
+         all of that. The cap is judged against the server's RESIDENT
+         memory, which carries ~1.5 GiB the tracker does not see (the
+         binary, thread stacks, memory-mapped data files, the allocator's
+         slack), so a cap of 60 percent of 4 GiB (2.4 GiB) was reached with
+         under 1 GiB of tracked allocations and every insert failed
+         (2026-10-22 20:54, three minutes of quotes lost). 3.2 GiB leaves
+         0.8 GiB of the container for the reclaimable rest. Hot-reloaded
+         from the file; the ratio below only applies when this is 0. -->
+    <max_server_memory_usage>3435973836</max_server_memory_usage>
     <max_server_memory_usage_to_ram_ratio>0.6</max_server_memory_usage_to_ram_ratio>
     <mark_cache_size>536870912</mark_cache_size>
 

@@ -99,6 +99,39 @@ app's `GET /status` goes stale.
    (or host-setup's `just provision`) and check
    `/etc/systemd/system/docker.service.d/restart-socket-clients.conf` exists.
 
+## ClickHouse: "memory limit exceeded" on every query, inserts included
+
+Every query, the scraper's `INSERT`s among them, fails with `Code: 241 ...
+(total) memory limit exceeded ... current RSS: x GiB, maximum: y GiB` while
+`system.processes` is empty. The server's resident memory has crept over
+its cap (`max_server_memory_usage`, `clickhouse/config.d/trading-bots.xml`)
+without any query holding it: memory-mapped data files, the query condition
+cache and the allocator's slack. Until it is under the cap again nothing
+runs, and quotes are being lost.
+
+1. Free what can be freed without a restart (each is harmless, the caches
+   rebuild):
+   ```sql
+   SYSTEM DROP MMAP CACHE;
+   SYSTEM DROP QUERY CONDITION CACHE;
+   SYSTEM DROP MARK CACHE;
+   SYSTEM JEMALLOC PURGE;
+   ```
+   then `select metric, formatReadableSize(value) from
+   system.asynchronous_metrics where metric = 'MemoryResident'` must read
+   under the cap, and `select max(ts) from quotes` must move again.
+2. If it does not: `docker compose restart clickhouse` (the scraper
+   reconnects; the quotes of the restart's seconds are lost).
+3. Check the gap: `select venue, min(ts), max(ts) from quotes where ts
+   between <first failure> and <recovery> group by venue`. The first failure
+   is in `select min(event_time) from system.query_log where exception_code
+   = 241 and event_date = today()`.
+
+The cap is set explicitly in the config file and hot-reloads from it, so
+raising it is a `git pull` on this host; keep it under the container's
+`CLICKHOUSE_MEMORY` by the ~0.8 GiB the resident-but-untracked memory
+needs, or the kernel kills the container instead.
+
 ## Vacuum basics
 
 - Autovacuum is ON by default — do not disable it.
