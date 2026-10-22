@@ -174,7 +174,12 @@ services:
       resources:
         limits:
           cpus: "${CLICKHOUSE_CPUS:-2.0}"
-          memory: ${CLICKHOUSE_MEMORY:-4g}
+          # Sized for the production host (8 GB): with postgres at 2g and
+          # the scraper at 512m this leaves about half a gigabyte for the
+          # OS, fluentd and the tunnel. The server's own cap sits 1 GiB
+          # under this (clickhouse/config.d/trading-bots.xml). A smaller
+          # host (the dev box) overrides in its .env.
+          memory: ${CLICKHOUSE_MEMORY:-5g}
     logging: *default-logging
 
   # The market-data scraper (built by the trading-bots repo's CI on release

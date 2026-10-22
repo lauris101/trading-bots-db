@@ -128,9 +128,12 @@ runs, and quotes are being lost.
    = 241 and event_date = today()`.
 
 The cap is set explicitly in the config file and hot-reloads from it, so
-raising it is a `git pull` on this host; keep it under the container's
-`CLICKHOUSE_MEMORY` by the ~0.8 GiB the resident-but-untracked memory
-needs, or the kernel kills the container instead.
+raising it is a `git pull` on this host; keep it about 1 GiB under the
+container's memory limit (the compose file's 5g, or `CLICKHOUSE_MEMORY`
+where a smaller host overrides it), the room the resident-but-untracked
+memory needs, or the kernel kills the container instead. A new container
+limit needs `docker compose up -d clickhouse` (a recreate: the scraper
+reconnects, the restart's seconds of quotes are lost).
 
 ## Vacuum basics
 
