@@ -288,7 +288,7 @@ services:
   # Deliberately `:-` not `:?`: interpolation runs before profile filtering,
   # so `:?` would break every compose command when the profile is off.
   cloudflared:
-    image: cloudflare/cloudflared:2026.8.2
+    image: cloudflare/cloudflared:2026.10.3
     profiles: ["tunnel"]
     restart: unless-stopped
     network_mode: host
